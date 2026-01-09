@@ -56,6 +56,15 @@ fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Generating configuration..."
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using existing configuration..."
+    # Read credentials from existing config for status check
+    ADMIN_USER=$(grep 'webServer.user' "$CONFIG_FILE" | cut -d'"' -f2)
+    ADMIN_PASS=$(grep 'webServer.password' "$CONFIG_FILE" | cut -d'"' -f2)
+    BOX_NAME=$(grep -m1 'name = ' "$CONFIG_FILE" | cut -d'"' -f2 | sed 's/ - .*//')
+fi
+
+if [ ! -f "$CONFIG_FILE" ]; then
     
     PORT_SUFFIX=${PORT_SUFFIX:-$(printf "%03d" $((RANDOM % 999 + 1)))}
     SOCKS5_PORT=${SOCKS5_PORT:-"51${PORT_SUFFIX}"}
