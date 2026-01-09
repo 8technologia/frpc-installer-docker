@@ -1,0 +1,46 @@
+services:
+  frpc:
+    build: .
+    image: 8technologia/frpc:latest
+    container_name: frpc
+    restart: unless-stopped
+    environment:
+      # Required
+      - SERVER_ADDR=103.166.185.156
+      - SERVER_PORT=7000
+      - AUTH_TOKEN=your_token_here
+      # Optional - auto-generated if not set
+      # - BOX_NAME=Box-Docker-01
+      # - SOCKS5_PORT=51234
+      # - HTTP_PORT=52234
+      # - ADMIN_PORT=53234
+      # - PROXY_USER=myuser
+      # - PROXY_PASS=mypass
+      # - ADMIN_USER=admin
+      # - ADMIN_PASS=adminpass
+      # - BANDWIDTH_LIMIT=8MB
+
+      # Webhook (optional)
+      # - WEBHOOK_URL=https://webhook.site/xxx
+
+    volumes:
+      # Persist config (optional - remove to regenerate on restart)
+      - ./config:/etc/frpc
+
+    # Expose admin API locally
+    ports:
+      - "7400:7400"
+
+    # Health check
+    healthcheck:
+      test: [ "CMD", "curl", "-sf", "http://127.0.0.1:7400/healthz" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
