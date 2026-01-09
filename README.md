@@ -190,6 +190,56 @@ docker exec frpc cat /etc/frpc/frpc.toml
 docker exec -it frpc sh
 ```
 
+## 🔄 Cập nhật phiên bản mới
+
+### Docker Compose (khuyến nghị)
+
+```bash
+cd frpc-installer-docker
+
+# Pull image mới
+docker-compose pull
+
+# Restart với image mới (giữ config)
+docker-compose up -d
+```
+
+### Docker Run
+
+```bash
+# Pull image mới
+docker pull 8technologia/frpc:latest
+
+# Stop và xóa container cũ
+docker stop frpc
+docker rm frpc
+
+# Chạy lại với image mới (config được mount sẽ được giữ)
+docker run -d \
+  --name frpc \
+  --restart unless-stopped \
+  -v ./config:/etc/frpc \
+  -e SERVER_ADDR=... \
+  -e SERVER_PORT=... \
+  -e AUTH_TOKEN=... \
+  8technologia/frpc:latest
+```
+
+### Cập nhật và regenerate config mới
+
+```bash
+# Xóa config cũ để tạo credentials mới
+docker exec frpc rm /etc/frpc/frpc.toml
+
+# Restart
+docker-compose restart
+# hoặc
+docker restart frpc
+
+# Xem credentials mới
+docker logs frpc
+```
+
 ## 🏗️ Build từ source
 
 ```bash
