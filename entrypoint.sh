@@ -161,8 +161,8 @@ check_frpc_status() {
         return 1
     fi
     
-    local running=$(echo "$status" | grep -c '"status":"running"' 2>/dev/null || echo "0")
-    if [ "$running" -ge 1 ]; then
+    # Check if any proxy has "running" status
+    if echo "$status" | grep -q '"status":"running"'; then
         return 0
     fi
     
