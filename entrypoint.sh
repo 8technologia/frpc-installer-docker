@@ -36,12 +36,19 @@ EOF
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Webhook sent: $event"
 }
 
-if [ -z "$SERVER_ADDR" ] || [ -z "$SERVER_PORT" ] || [ -z "$AUTH_TOKEN" ]; then
+if [ -z "$SERVER_ADDR" ] || [ -z "$SERVER_PORT" ] || [ -z "$AUTH_TOKEN" ] || [ -z "$BOX_NAME" ]; then
     echo "ERROR: Required environment variables not set"
-    echo "Required: SERVER_ADDR, SERVER_PORT, AUTH_TOKEN"
+    echo ""
+    echo "Required:"
+    echo "  SERVER_ADDR  - FRP server IP/domain"
+    echo "  SERVER_PORT  - FRP server port"
+    echo "  AUTH_TOKEN   - Authentication token"
+    echo "  BOX_NAME     - Box name (e.g., Box-HaNoi-01)"
     echo ""
     echo "Example:"
-    echo "  docker run -e SERVER_ADDR=103.166.185.156 -e SERVER_PORT=7000 -e AUTH_TOKEN=mytoken ..."
+    echo "  docker run -e SERVER_ADDR=x.x.x.x -e SERVER_PORT=7000 -e AUTH_TOKEN=xxx -e BOX_NAME=Box-01 ..."
+    echo ""
+    echo "Or use docker-compose with .env file"
     exit 1
 fi
 
@@ -58,7 +65,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
     ADMIN_USER=${ADMIN_USER:-"admin"}
     ADMIN_PASS=${ADMIN_PASS:-$(generate_password)}
     
-    BOX_NAME=${BOX_NAME:-"Box-Docker-${PORT_SUFFIX}"}
     BANDWIDTH_LIMIT=${BANDWIDTH_LIMIT:-"8MB"}
     
     cat > "$CONFIG_FILE" << EOF
