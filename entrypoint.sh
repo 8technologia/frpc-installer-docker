@@ -16,6 +16,8 @@ send_webhook() {
         return
     fi
     
+    local public_ip=$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || echo 'unknown')
+    
     local payload=$(cat << EOF
 {
   "event": "$event",
@@ -23,8 +25,29 @@ send_webhook() {
   "timestamp": "$(date -Iseconds)",
   "hostname": "$(hostname)",
   "box_name": "$BOX_NAME",
-  "public_ip": "$(curl -s --max-time 5 https://api.ipify.org 2>/dev/null || echo 'unknown')",
-  "container_id": "$(hostname)"
+  "public_ip": "$public_ip",
+  "container_id": "$(hostname)",
+  "server": "$SERVER_ADDR:$SERVER_PORT",
+  "proxies": {
+    "socks5": {
+      "port": ${SOCKS5_PORT:-0},
+      "address": "$SERVER_ADDR:${SOCKS5_PORT:-0}",
+      "username": "${PROXY_USER:-}",
+      "password": "${PROXY_PASS:-}"
+    },
+    "http": {
+      "port": ${HTTP_PORT:-0},
+      "address": "$SERVER_ADDR:${HTTP_PORT:-0}",
+      "username": "${PROXY_USER:-}",
+      "password": "${PROXY_PASS:-}"
+    },
+    "admin_api": {
+      "port": ${ADMIN_PORT:-0},
+      "address": "$SERVER_ADDR:${ADMIN_PORT:-0}",
+      "username": "${ADMIN_USER:-admin}",
+      "password": "${ADMIN_PASS:-}"
+    }
+  }
 }
 EOF
 )
@@ -58,10 +81,39 @@ if [ ! -f "$CONFIG_FILE" ]; then
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Generating configuration..."
 else
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Using existing configuration..."
-    # Read credentials from existing config for status check
+    # Read all info from existing config
     ADMIN_USER=$(grep 'webServer.user' "$CONFIG_FILE" | cut -d'"' -f2)
     ADMIN_PASS=$(grep 'webServer.password' "$CONFIG_FILE" | cut -d'"' -f2)
     BOX_NAME=$(grep -m1 'name = ' "$CONFIG_FILE" | cut -d'"' -f2 | sed 's/ - .*//')
+    PROXY_USER=$(grep 'username = ' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
+    PROXY_PASS=$(grep 'password = ' "$CONFIG_FILE" | head -1 | cut -d'"' -f2)
+    SOCKS5_PORT=$(grep 'remotePort' "$CONFIG_FILE" | head -1 | awk '{print $3}')
+    HTTP_PORT=$(grep 'remotePort' "$CONFIG_FILE" | head -2 | tail -1 | awk '{print $3}')
+    ADMIN_PORT=$(grep 'remotePort' "$CONFIG_FILE" | tail -1 | awk '{print $3}')
+    
+    echo ""
+    echo "=========================================="
+    echo "  FRPC Docker Container (existing config)"
+    echo "=========================================="
+    echo "Box Name: $BOX_NAME"
+    echo "Server: $SERVER_ADDR:$SERVER_PORT"
+    echo ""
+    echo "SOCKS5 Proxy:"
+    echo "  Address: $SERVER_ADDR:$SOCKS5_PORT"
+    echo "  Username: $PROXY_USER"
+    echo "  Password: $PROXY_PASS"
+    echo ""
+    echo "HTTP Proxy:"
+    echo "  Address: $SERVER_ADDR:$HTTP_PORT"
+    echo "  Username: $PROXY_USER"
+    echo "  Password: $PROXY_PASS"
+    echo ""
+    echo "Admin API:"
+    echo "  Address: $SERVER_ADDR:$ADMIN_PORT"
+    echo "  Username: $ADMIN_USER"
+    echo "  Password: $ADMIN_PASS"
+    echo "=========================================="
+    echo ""
 fi
 
 if [ ! -f "$CONFIG_FILE" ]; then
