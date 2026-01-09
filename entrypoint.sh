@@ -33,13 +33,15 @@ send_webhook() {
       "port": ${SOCKS5_PORT:-0},
       "address": "$SERVER_ADDR:${SOCKS5_PORT:-0}",
       "username": "${PROXY_USER:-}",
-      "password": "${PROXY_PASS:-}"
+      "password": "${PROXY_PASS:-}",
+      "quick": "$SERVER_ADDR:${SOCKS5_PORT:-0}:${PROXY_USER:-}:${PROXY_PASS:-}"
     },
     "http": {
       "port": ${HTTP_PORT:-0},
       "address": "$SERVER_ADDR:${HTTP_PORT:-0}",
       "username": "${PROXY_USER:-}",
-      "password": "${PROXY_PASS:-}"
+      "password": "${PROXY_PASS:-}",
+      "quick": "$SERVER_ADDR:${HTTP_PORT:-0}:${PROXY_USER:-}:${PROXY_PASS:-}"
     },
     "admin_api": {
       "port": ${ADMIN_PORT:-0},
@@ -102,11 +104,13 @@ else
     echo "  Address: $SERVER_ADDR:$SOCKS5_PORT"
     echo "  Username: $PROXY_USER"
     echo "  Password: $PROXY_PASS"
+    echo "  Quick: $SERVER_ADDR:$SOCKS5_PORT:$PROXY_USER:$PROXY_PASS"
     echo ""
     echo "HTTP Proxy:"
     echo "  Address: $SERVER_ADDR:$HTTP_PORT"
     echo "  Username: $PROXY_USER"
     echo "  Password: $PROXY_PASS"
+    echo "  Quick: $SERVER_ADDR:$HTTP_PORT:$PROXY_USER:$PROXY_PASS"
     echo ""
     echo "Admin API:"
     echo "  Address: $SERVER_ADDR:$ADMIN_PORT"
@@ -186,11 +190,13 @@ EOF
     echo "  Address: $SERVER_ADDR:$SOCKS5_PORT"
     echo "  Username: $PROXY_USER"
     echo "  Password: $PROXY_PASS"
+    echo "  Quick: $SERVER_ADDR:$SOCKS5_PORT:$PROXY_USER:$PROXY_PASS"
     echo ""
     echo "HTTP Proxy:"
     echo "  Address: $SERVER_ADDR:$HTTP_PORT"
     echo "  Username: $PROXY_USER"
     echo "  Password: $PROXY_PASS"
+    echo "  Quick: $SERVER_ADDR:$HTTP_PORT:$PROXY_USER:$PROXY_PASS"
     echo ""
     echo "Admin API:"
     echo "  Address: $SERVER_ADDR:$ADMIN_PORT"
