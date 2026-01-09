@@ -2,7 +2,7 @@ services:
   frpc:
     build: .
     image: 8technologia/frpc:latest
-    container_name: frpc-${BOX_NAME}
+    container_name: frpc
     restart: unless-stopped
     environment:
       - SERVER_ADDR=${SERVER_ADDR}
