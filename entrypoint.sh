@@ -143,4 +143,49 @@ fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting frpc..."
 
-exec /usr/local/bin/frpc -c "$CONFIG_FILE"
+# Start frpc in background
+/usr/local/bin/frpc -c "$CONFIG_FILE" &
+FRPC_PID=$!
+
+# Wait for frpc to connect
+sleep 8
+
+# Check if frpc is running and proxies are registered
+check_frpc_status() {
+    if ! kill -0 $FRPC_PID 2>/dev/null; then
+        return 1
+    fi
+    
+    local status=$(curl -s --max-time 5 -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7400/api/status" 2>/dev/null)
+    if [ -z "$status" ]; then
+        return 1
+    fi
+    
+    local running=$(echo "$status" | grep -c '"status":"running"' 2>/dev/null || echo "0")
+    if [ "$running" -ge 1 ]; then
+        return 0
+    fi
+    
+    return 1
+}
+
+if check_frpc_status; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] frpc connected successfully! Proxies are running."
+    send_webhook "container_ready" "FRPC proxies are running for box $BOX_NAME"
+else
+    # Get error from logs
+    FRPC_LOGS=$(cat /var/log/frpc.log 2>/dev/null | tail -10 | tr '\n' '|')
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] WARNING: frpc may not be fully connected"
+    
+    # Check specific errors
+    if cat /var/log/frpc.log 2>/dev/null | grep -qi "token"; then
+        send_webhook "container_error" "Token mismatch - check AUTH_TOKEN|$FRPC_LOGS"
+    elif cat /var/log/frpc.log 2>/dev/null | grep -qi "port"; then
+        send_webhook "container_error" "Port error - port may be in use|$FRPC_LOGS"
+    else
+        send_webhook "container_error" "frpc connection issue|$FRPC_LOGS"
+    fi
+fi
+
+# Wait for frpc process (keep container running)
+wait $FRPC_PID
