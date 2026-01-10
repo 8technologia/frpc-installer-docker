@@ -40,8 +40,8 @@ send_webhook() {
       "port": ${HTTP_PORT:-0},
       "address": "$SERVER_ADDR:${HTTP_PORT:-0}",
       "username": "${PROXY_USER:-}",
-      "password": "${PROXY_PASS:-}",
-      "quick": "$SERVER_ADDR:${HTTP_PORT:-0}:${PROXY_USER:-}:${PROXY_PASS:-}"
+      "password": "${HTTP_PASS:-${PROXY_PASS:-}}",
+      "quick": "$SERVER_ADDR:${HTTP_PORT:-0}:${PROXY_USER:-}:${HTTP_PASS:-${PROXY_PASS:-}}"
     },
     "admin_api": {
       "port": ${ADMIN_PORT:-0},
@@ -90,6 +90,7 @@ else
     BOX_NAME=$(grep -m1 'name = ' "$CONFIG_FILE" | cut -d'"' -f2 | sed 's/ - .*//')
     PROXY_USER=$(grep -A1 'type = "socks5"' "$CONFIG_FILE" | grep 'username' | cut -d'"' -f2)
     PROXY_PASS=$(grep -A2 'type = "socks5"' "$CONFIG_FILE" | grep 'password' | cut -d'"' -f2)
+    HTTP_PASS=$(grep 'httpPassword' "$CONFIG_FILE" | cut -d'"' -f2)
     SOCKS5_PORT=$(grep 'remotePort' "$CONFIG_FILE" | head -1 | awk '{print $3}')
     HTTP_PORT=$(grep 'remotePort' "$CONFIG_FILE" | head -2 | tail -1 | awk '{print $3}')
     ADMIN_PORT=$(grep 'remotePort' "$CONFIG_FILE" | tail -1 | awk '{print $3}')
