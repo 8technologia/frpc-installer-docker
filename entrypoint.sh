@@ -47,12 +47,8 @@ send_webhook() {
       "port": ${ADMIN_PORT:-0},
       "address": "$SERVER_ADDR:${ADMIN_PORT:-0}",
       "username": "${ADMIN_USER:-admin}",
-      "password": "${ADMIN_PASS:-}"
-    },
-    "config_proxy": {
-      "port": ${CONFIG_PROXY_PORT:-0},
-      "address": "$SERVER_ADDR:${CONFIG_PROXY_PORT:-0}",
-      "description": "PUT /api/config to update+reload+save"
+      "password": "${ADMIN_PASS:-}",
+      "auto_save": true
     }
   }
 }
@@ -145,8 +141,8 @@ serverAddr = "$SERVER_ADDR"
 serverPort = $SERVER_PORT
 loginFailExit = true
 
-webServer.addr = "0.0.0.0"
-webServer.port = 7400
+webServer.addr = "127.0.0.1"
+webServer.port = 7402
 webServer.user = "$ADMIN_USER"
 webServer.password = "$ADMIN_PASS"
 
@@ -181,16 +177,7 @@ type = "tcp"
 localIP = "127.0.0.1"
 localPort = 7400
 remotePort = $ADMIN_PORT
-
-[[proxies]]
-name = "$BOX_NAME - ConfigProxy"
-type = "tcp"
-localIP = "127.0.0.1"
-localPort = 7401
-remotePort = $((ADMIN_PORT + 1000))
 EOF
-
-    CONFIG_PROXY_PORT=$((ADMIN_PORT + 1000))
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuration generated!"
     echo ""
@@ -212,14 +199,11 @@ EOF
     echo "  Password: $PROXY_PASS"
     echo "  Quick: $SERVER_ADDR:$HTTP_PORT:$PROXY_USER:$PROXY_PASS"
     echo ""
-    echo "Admin API:"
+    echo "Admin API (auto-save enabled):"
     echo "  Address: $SERVER_ADDR:$ADMIN_PORT"
     echo "  Username: $ADMIN_USER"
     echo "  Password: $ADMIN_PASS"
-    echo ""
-    echo "Config Proxy (auto-save):"
-    echo "  Address: $SERVER_ADDR:$CONFIG_PROXY_PORT"
-    echo "  PUT /api/config → update + reload + save"
+    echo "  PUT /api/config → update + reload + save to file"
     echo "=========================================="
     echo ""
 fi
@@ -270,16 +254,17 @@ else
     fi
 fi
 
-# Config Proxy Server - lắng nghe port 7401
+# Config Proxy Server - lắng nghe port 7400 (public)
+# Forward tới frpc admin trên port 7402 (internal)
 # Khi nhận PUT /api/config -> forward to frpc -> reload -> save to file ngay lập tức
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7401..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7400..."
 (
     while true; do
         # Simple HTTP server using netcat
         { 
             read -r REQUEST_LINE
             METHOD=$(echo "$REQUEST_LINE" | cut -d' ' -f1)
-            PATH=$(echo "$REQUEST_LINE" | cut -d' ' -f2)
+            REQ_PATH=$(echo "$REQUEST_LINE" | cut -d' ' -f2)
             
             # Read headers
             CONTENT_LENGTH=0
@@ -298,32 +283,32 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7401..."
             fi
             
             # Handle requests
-            if [ "$PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
+            if [ "$REQ_PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
                 # 1. Update config
                 curl -s -X PUT -u "$ADMIN_USER:$ADMIN_PASS" \
                     -H "Content-Type: text/plain" \
-                    -d "$BODY" http://127.0.0.1:7400/api/config
+                    -d "$BODY" http://127.0.0.1:7402/api/config
                 
                 # 2. Reload
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/reload
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/reload
                 
                 # 3. Save to file immediately
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config > "$CONFIG_FILE"
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
                 
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
                 
                 echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
-            elif [ "$PATH" = "/api/save" ]; then
+            elif [ "$REQ_PATH" = "/api/save" ]; then
                 # Manual save endpoint
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config > "$CONFIG_FILE"
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config saved to file"
                 echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"saved\"}"
             else
                 # Forward other requests to frpc
-                RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7400$PATH")
+                RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402$REQ_PATH")
                 echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n$RESP"
             fi
-        } | nc -l -p 7401 -q 1 2>/dev/null || sleep 1
+        } | nc -l -p 7400 -q 1 2>/dev/null || sleep 1
     done
 ) &
 

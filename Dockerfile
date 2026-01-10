@@ -26,6 +26,6 @@ RUN chmod +x /entrypoint.sh
 WORKDIR /etc/frpc
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD curl -sf http://127.0.0.1:7400/healthz || exit 1
+    CMD curl -sf http://127.0.0.1:7402/healthz || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
