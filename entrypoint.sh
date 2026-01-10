@@ -204,8 +204,6 @@ EOF
     echo "  Password: $ADMIN_PASS"
     echo "=========================================="
     echo ""
-    
-    send_webhook "container_started" "FRPC container started with box $BOX_NAME"
 fi
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting frpc..."
