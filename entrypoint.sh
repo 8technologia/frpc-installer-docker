@@ -252,5 +252,23 @@ else
     fi
 fi
 
+# Background config sync - saves running config to file every 60 seconds
+# This ensures API config changes are persisted for container restarts
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config sync (saves every 60s)..."
+(
+    while true; do
+        sleep 60
+        NEW_CONFIG=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config 2>/dev/null)
+        if [ -n "$NEW_CONFIG" ]; then
+            CURRENT_CONFIG=$(cat "$CONFIG_FILE" 2>/dev/null)
+            if [ "$NEW_CONFIG" != "$CURRENT_CONFIG" ]; then
+                echo "$NEW_CONFIG" > "$CONFIG_FILE"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config synced to file"
+            fi
+        fi
+    done
+) &
+
 # Wait for frpc process (keep container running)
 wait $FRPC_PID
+
