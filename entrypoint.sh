@@ -252,20 +252,60 @@ else
     fi
 fi
 
-# Background config sync - saves running config to file every 60 seconds
-# This ensures API config changes are persisted for container restarts
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config sync (saves every 60s)..."
+# Config Proxy Server - lắng nghe port 7401
+# Khi nhận PUT /api/config -> forward to frpc -> reload -> save to file ngay lập tức
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7401..."
 (
     while true; do
-        sleep 60
-        NEW_CONFIG=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config 2>/dev/null)
-        if [ -n "$NEW_CONFIG" ]; then
-            CURRENT_CONFIG=$(cat "$CONFIG_FILE" 2>/dev/null)
-            if [ "$NEW_CONFIG" != "$CURRENT_CONFIG" ]; then
-                echo "$NEW_CONFIG" > "$CONFIG_FILE"
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config synced to file"
+        # Simple HTTP server using netcat
+        { 
+            read -r REQUEST_LINE
+            METHOD=$(echo "$REQUEST_LINE" | cut -d' ' -f1)
+            PATH=$(echo "$REQUEST_LINE" | cut -d' ' -f2)
+            
+            # Read headers
+            CONTENT_LENGTH=0
+            while read -r HEADER; do
+                HEADER=$(echo "$HEADER" | tr -d '\r')
+                [ -z "$HEADER" ] && break
+                if echo "$HEADER" | grep -qi "content-length"; then
+                    CONTENT_LENGTH=$(echo "$HEADER" | cut -d':' -f2 | tr -d ' ')
+                fi
+            done
+            
+            # Read body
+            BODY=""
+            if [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
+                BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
             fi
-        fi
+            
+            # Handle requests
+            if [ "$PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
+                # 1. Update config
+                curl -s -X PUT -u "$ADMIN_USER:$ADMIN_PASS" \
+                    -H "Content-Type: text/plain" \
+                    -d "$BODY" http://127.0.0.1:7400/api/config
+                
+                # 2. Reload
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/reload
+                
+                # 3. Save to file immediately
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config > "$CONFIG_FILE"
+                
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
+                
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
+            elif [ "$PATH" = "/api/save" ]; then
+                # Manual save endpoint
+                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7400/api/config > "$CONFIG_FILE"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config saved to file"
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"saved\"}"
+            else
+                # Forward other requests to frpc
+                RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7400$PATH")
+                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n$RESP"
+            fi
+        } | nc -l -p 7401 -q 1 2>/dev/null || sleep 1
     done
 ) &
 
