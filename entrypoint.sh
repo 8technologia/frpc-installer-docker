@@ -254,58 +254,13 @@ else
     fi
 fi
 
-# Config Proxy Server - lắng nghe port 7400 (public)
-# Forward tới frpc admin trên port 7402 (internal)
-# Khi nhận PUT /api/config -> forward to frpc -> reload -> save to file ngay lập tức
+# Start Python Config Proxy Server
+# - Handles HTTP Basic Auth properly
+# - Forwards to frpc admin on port 7402
+# - Auto-saves config after PUT /api/config
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7400..."
-(
-    while true; do
-        { 
-            read -r REQUEST_LINE
-            METHOD=$(echo "$REQUEST_LINE" | cut -d' ' -f1)
-            REQ_PATH=$(echo "$REQUEST_LINE" | cut -d' ' -f2)
-            
-            # Read headers
-            CONTENT_LENGTH=0
-            while read -r HEADER; do
-                HEADER=$(echo "$HEADER" | tr -d '\r')
-                [ -z "$HEADER" ] && break
-                if echo "$HEADER" | grep -qi "^content-length:"; then
-                    CONTENT_LENGTH=$(echo "$HEADER" | cut -d':' -f2 | tr -d ' ')
-                fi
-            done
-            
-            # Read body
-            BODY=""
-            if [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
-                BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
-            fi
-            
-            # Handle requests
-            if [ "$REQ_PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
-                # 1. Update config
-                curl -s -X PUT -u "$ADMIN_USER:$ADMIN_PASS" \
-                    -H "Content-Type: text/plain" \
-                    -d "$BODY" http://127.0.0.1:7402/api/config >/dev/null
-                
-                # 2. Reload
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/reload >/dev/null
-                
-                # 3. Save to file immediately
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
-                
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
-                
-                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
-            else
-                # Forward other requests to frpc
-                RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402$REQ_PATH" 2>/dev/null)
-                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n$RESP"
-            fi
-        } | nc -l -p 7400 -q 1 2>/dev/null || sleep 0.5
-    done
-) &
+export ADMIN_USER ADMIN_PASS CONFIG_FILE
+python3 /config_proxy.py &
 
 # Wait for frpc process (keep container running)
 wait $FRPC_PID
-

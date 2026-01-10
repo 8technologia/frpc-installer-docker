@@ -6,7 +6,7 @@ LABEL description="FRPC Client with auto-config and health check"
 ARG FRP_VERSION=0.66.0
 ARG TARGETARCH
 
-RUN apk add --no-cache curl bash jq netcat-openbsd
+RUN apk add --no-cache curl bash jq python3
 
 RUN case "${TARGETARCH}" in \
     "amd64") ARCH="amd64" ;; \
@@ -21,6 +21,7 @@ RUN case "${TARGETARCH}" in \
     rm -rf /tmp/*
 
 COPY entrypoint.sh /entrypoint.sh
+COPY config_proxy.py /config_proxy.py
 RUN chmod +x /entrypoint.sh
 
 WORKDIR /etc/frpc
