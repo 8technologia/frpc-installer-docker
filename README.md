@@ -1,250 +1,228 @@
-# FRPC Docker Installer
+# FRPC Docker Auto-Installer
 
-Docker container cho FRPC client với tự động cấu hình, health check và webhook notifications.
+Docker container cho FRPC client với:
 
-## ✅ Tính năng
+- ✅ Auto-generate config, credentials
+- ✅ Admin API với auto-save (thay đổi config không cần restart)
+- ✅ Webhook notifications
+- ✅ Persist config qua volume
 
-- **Zero-config**: Tự động tạo config với random ports và credentials
-- **Multi-arch**: Hỗ trợ amd64, arm64, arm
-- **Health Check**: Docker built-in health check
-- **Webhook**: Gửi thông báo khi proxy hoạt động hoặc có lỗi
-- **Auto-restart**: Docker restart policy
-- **Quick Copy**: Format `IP:PORT:USER:PASS` để copy nhanh
-
-## 🚀 Cài đặt
-
-### 1. Clone repo
+## Quick Start
 
 ```bash
 git clone https://github.com/8technologia/frpc-installer-docker.git
 cd frpc-installer-docker
-```
-
-### 2. Tạo file `.env`
-
-```bash
 cp .env.example .env
-nano .env
-```
+# Edit .env với SERVER_ADDR, SERVER_PORT, AUTH_TOKEN
 
-### 3. Điền thông tin
-
-```env
-SERVER_ADDR=103.166.185.156
-SERVER_PORT=7000
-AUTH_TOKEN=your_token_here
-
-# Optional
-BOX_NAME=Box-HaNoi-01
-WEBHOOK_URL=https://webhook.site/xxx
-```
-
-### 4. Build và chạy
-
-```bash
-docker-compose build
 docker-compose up -d
 docker logs frpc
 ```
 
-## 📋 Environment Variables
+## Environment Variables
 
-### Required (bắt buộc)
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `SERVER_ADDR` | ✅ | FRP server IP/domain |
+| `SERVER_PORT` | ✅ | FRP server port |
+| `AUTH_TOKEN` | ✅ | Authentication token |
+| `BOX_NAME` | ❌ | Box name (auto-generated) |
+| `SOCKS5_PORT` | ❌ | SOCKS5 port (auto: 51xxx) |
+| `HTTP_PORT` | ❌ | HTTP proxy port (auto: 52xxx) |
+| `ADMIN_PORT` | ❌ | Admin API port (auto: 53xxx) |
+| `PROXY_USER` | ❌ | Proxy username (auto-generated) |
+| `PROXY_PASS` | ❌ | Proxy password (auto-generated) |
+| `ADMIN_USER` | ❌ | Admin username (default: admin) |
+| `ADMIN_PASS` | ❌ | Admin password (auto-generated) |
+| `BANDWIDTH_LIMIT` | ❌ | Bandwidth limit (default: 8MB) |
+| `WEBHOOK_URL` | ❌ | Webhook endpoint |
 
-| Variable | Description |
-|----------|-------------|
-| `SERVER_ADDR` | FRP server IP/domain |
-| `SERVER_PORT` | FRP server port |
-| `AUTH_TOKEN` | Authentication token |
+## Admin API
 
-### Optional (tùy chọn)
+### Endpoints
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `BOX_NAME` | Box-Docker-xxx | Tên box |
-| `SOCKS5_PORT` | 51xxx | SOCKS5 remote port |
-| `HTTP_PORT` | 52xxx | HTTP remote port |
-| `ADMIN_PORT` | 53xxx | Admin API remote port |
-| `PROXY_USER` | random | Proxy username |
-| `PROXY_PASS` | random | Proxy password |
-| `ADMIN_USER` | admin | Admin username |
-| `ADMIN_PASS` | random | Admin password |
-| `BANDWIDTH_LIMIT` | 8MB | Bandwidth limit |
-| `WEBHOOK_URL` | - | Webhook URL |
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/status` | Lấy status các proxy |
+| GET | `/api/config` | Lấy config hiện tại |
+| PUT | `/api/config` | **Update + Reload + Save ngay** |
 
-## 🔔 Webhook Events
+### Đổi config (real-time, không cần restart)
 
-| Event | Khi nào | Có logs |
-|-------|---------|---------|
-| `container_ready` | Proxies hoạt động | ❌ |
-| `container_error` | Có lỗi (token/port) | ✅ |
+```bash
+curl -X PUT -u "admin:PASSWORD" \
+  -H "Content-Type: text/plain" \
+  -d 'NEW_CONFIG_CONTENT' \
+  http://SERVER:ADMIN_PORT/api/config
+```
 
-### Ví dụ webhook payload
+**Response:**
+
+```json
+{"status":"updated","saved":true}
+```
+
+### Đổi admin password
+
+Config mới với password mới → áp dụng ngay:
+
+```toml
+webServer.user = "newadmin"
+webServer.password = "newpassword"
+```
+
+## Webhook Events
+
+### container_ready
+
+Gửi khi container khởi động thành công:
 
 ```json
 {
   "event": "container_ready",
-  "message": "FRPC proxies are running for box Box-Docker-01",
-  "timestamp": "2026-01-10T00:42:56+00:00",
-  "hostname": "e9edeeb610a2",
-  "box_name": "Box-Docker-01",
-  "public_ip": "210.16.120.234",
-  "container_id": "e9edeeb610a2",
-  "server": "103.166.185.156:7000",
+  "message": "FRPC proxies are running for box Box-Docker-xxx",
+  "timestamp": "2026-01-10T02:00:00+00:00",
+  "hostname": "container_id",
+  "box_name": "Box-Docker-xxx",
+  "public_ip": "xxx.xxx.xxx.xxx",
+  "server": "server:port",
   "proxies": {
     "socks5": {
-      "port": 51284,
-      "address": "103.166.185.156:51284",
-      "username": "abc123",
-      "password": "xyz789",
-      "quick": "103.166.185.156:51284:abc123:xyz789"
+      "port": 51xxx,
+      "address": "server:51xxx",
+      "username": "xxx",
+      "password": "xxx",
+      "quick": "server:port:user:pass"
     },
     "http": {
-      "port": 52284,
-      "address": "103.166.185.156:52284",
-      "username": "abc123",
-      "password": "xyz789",
-      "quick": "103.166.185.156:52284:abc123:xyz789"
+      "port": 52xxx,
+      "address": "server:52xxx",
+      "username": "xxx",
+      "password": "xxx",
+      "quick": "server:port:user:pass"
     },
     "admin_api": {
-      "port": 53284,
-      "address": "103.166.185.156:53284",
+      "port": 53xxx,
+      "address": "server:53xxx",
       "username": "admin",
-      "password": "adminpass"
+      "password": "xxx",
+      "auto_save": true
     }
   }
 }
 ```
 
-## 🖥️ Commands
+### container_error
+
+Gửi khi có lỗi kết nối.
+
+## Commands
+
+### Start
 
 ```bash
-# Xem logs
-docker logs -f frpc
-
-# Restart
-docker restart frpc
-
-# Stop
-docker stop frpc
-
-# Xem config
-docker exec frpc cat /etc/frpc/frpc.toml
-
-# Shell access
-docker exec -it frpc sh
-```
-
-## 🔄 Cập nhật phiên bản mới
-
-```bash
-cd frpc-installer-docker
-
-# Pull code mới từ GitHub
-git pull
-
-# Build lại
-docker-compose build --no-cache
-
-# Restart (giữ config)
 docker-compose up -d
 ```
 
-## 🗑️ Xóa hết và tạo credentials mới
+### View logs
 
 ```bash
-cd frpc-installer-docker
-
-# Down container
-docker-compose down
-
-# Xóa config
-rm -rf ./config/*
-
-# Build và chạy lại
-docker-compose build --no-cache
-docker-compose up -d
-
-# Xem credentials mới
 docker logs frpc
+docker logs -f frpc  # follow
 ```
 
-## 🏥 Health Check
-
-| Config | Value |
-|--------|-------|
-| Interval | 30 giây |
-| Endpoint | `http://127.0.0.1:7400/healthz` |
-| Start period | 10 giây |
-| Retries | 3 |
+### Restart
 
 ```bash
-docker inspect --format='{{.State.Health.Status}}' frpc
+docker restart frpc
 ```
 
-## 📂 Cấu trúc
+### Stop
+
+```bash
+docker-compose down
+```
+
+### Reset config (regenerate credentials)
+
+```bash
+rm -rf ./config/*
+docker-compose up -d
+```
+
+## Update
+
+```bash
+cd frpc-installer-docker
+git pull
+docker-compose build --no-cache
+docker-compose up -d
+```
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│ External Client                                         │
+│   curl -u admin:pass http://server:53xxx/api/config    │
+└────────────────────┬────────────────────────────────────┘
+                     ↓
+┌────────────────────┴────────────────────────────────────┐
+│ Python Config Proxy (port 7400)                         │
+│ - Verify external auth                                  │
+│ - Forward to frpc with internal auth                    │
+│ - Auto-save after PUT /api/config                       │
+└────────────────────┬────────────────────────────────────┘
+                     ↓
+┌────────────────────┴────────────────────────────────────┐
+│ FRPC Admin API (port 7402, internal only)              │
+│ - PUT /api/config → update memory                       │
+│ - GET /api/reload → apply config                        │
+└─────────────────────────────────────────────────────────┘
+```
+
+## Directory Structure
 
 ```
 frpc-installer-docker/
-├── Dockerfile
 ├── docker-compose.yml
+├── Dockerfile
 ├── entrypoint.sh
+├── config_proxy.py      # Python HTTP proxy với auth
 ├── .env.example
-├── .env              # Bạn tạo
-└── config/           # Mount volume
-    └── frpc.toml     # Auto-generated
+├── .gitignore
+├── README.md
+└── config/              # Volume mount, DO NOT commit
+    └── frpc.toml
 ```
 
-## ⚙️ Yêu cầu FRP Server
+## Troubleshooting
 
-```toml
-# frps.toml
-bindPort = 7000
+### Container không kết nối được
 
-auth.method = "token"
-auth.token = "your_secret_token"
+1. Check logs: `docker logs frpc`
+2. Verify AUTH_TOKEN đúng
+3. Check firewall trên FRP server
 
-allowPorts = [
-  { start = 51001, end = 53999 }
-]
-```
+### Admin API không hoạt động
 
-## 🔧 Troubleshooting
+1. Đợi container ready (webhook `container_ready`)
+2. Verify credentials trong webhook
+3. Test: `curl -u admin:PASS http://server:port/api/status`
 
-### Missing environment variables
+### Config không persist
 
-```
-ERROR: Required environment variables not set
-```
+1. Check volume mount: `./config:/etc/frpc`
+2. Check thư mục `config/` có file `frpc.toml`
 
-→ Kiểm tra `.env` đã set `SERVER_ADDR`, `SERVER_PORT`, `AUTH_TOKEN`
+## Version History
 
-### Token mismatch
+- **v1.0** - Initial Docker version
+- **v1.1** - Added webhook support
+- **v1.2** - Added Admin API with auto-save
+- **v1.3** - Python HTTP proxy for proper auth
+- **v1.4** - Separate HTTP/SOCKS5 passwords in webhook
 
-```bash
-docker logs frpc | grep -i token
-```
-
-→ Kiểm tra `AUTH_TOKEN` khớp với `auth.token` trong frps.toml
-
-### Port not allowed
-
-→ Thêm vào frps.toml:
-
-```toml
-allowPorts = [{ start = 51001, end = 53999 }]
-```
-
-### Authentication required khi dùng proxy
-
-→ Xóa config và tạo lại:
-
-```bash
-rm -rf ./config/*
-docker-compose up -d --force-recreate
-docker logs frpc
-```
-
-## 📜 License
+## License
 
 MIT
