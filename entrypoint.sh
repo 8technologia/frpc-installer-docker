@@ -48,6 +48,11 @@ send_webhook() {
       "address": "$SERVER_ADDR:${ADMIN_PORT:-0}",
       "username": "${ADMIN_USER:-admin}",
       "password": "${ADMIN_PASS:-}"
+    },
+    "config_proxy": {
+      "port": ${CONFIG_PROXY_PORT:-0},
+      "address": "$SERVER_ADDR:${CONFIG_PROXY_PORT:-0}",
+      "description": "PUT /api/config to update+reload+save"
     }
   }
 }
@@ -176,7 +181,16 @@ type = "tcp"
 localIP = "127.0.0.1"
 localPort = 7400
 remotePort = $ADMIN_PORT
+
+[[proxies]]
+name = "$BOX_NAME - ConfigProxy"
+type = "tcp"
+localIP = "127.0.0.1"
+localPort = 7401
+remotePort = $((ADMIN_PORT + 1000))
 EOF
+
+    CONFIG_PROXY_PORT=$((ADMIN_PORT + 1000))
 
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuration generated!"
     echo ""
@@ -202,6 +216,10 @@ EOF
     echo "  Address: $SERVER_ADDR:$ADMIN_PORT"
     echo "  Username: $ADMIN_USER"
     echo "  Password: $ADMIN_PASS"
+    echo ""
+    echo "Config Proxy (auto-save):"
+    echo "  Address: $SERVER_ADDR:$CONFIG_PROXY_PORT"
+    echo "  PUT /api/config → update + reload + save"
     echo "=========================================="
     echo ""
 fi
