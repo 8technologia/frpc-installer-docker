@@ -298,11 +298,6 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7400..."
                 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
                 
                 echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
-            elif [ "$REQ_PATH" = "/api/save" ]; then
-                # Manual save endpoint
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config saved to file"
-                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"saved\"}"
             else
                 # Forward other requests to frpc
                 RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402$REQ_PATH")
