@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
 FRPC Config Proxy Server
-- Handles HTTP Basic Auth
-- Forwards requests to frpc admin API
+- Handles HTTP Basic Auth (external)
+- Forwards requests to frpc admin API (with fixed internal credentials)
 - Auto-saves config after PUT /api/config
-- Auto-updates credentials when config changes
+- External auth can change, internal frpc auth stays fixed
 """
 
 import http.server
@@ -12,20 +12,25 @@ import base64
 import os
 import re
 import json
+import time
 from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 CONFIG_FILE = os.environ.get('CONFIG_FILE', '/etc/frpc/frpc.toml')
 FRPC_ADMIN_URL = 'http://127.0.0.1:7402'
 
-# Mutable credentials - will be updated when config changes
-credentials = {
-    'user': os.environ.get('ADMIN_USER', 'admin'),
-    'pass': os.environ.get('ADMIN_PASS', '')
+# Fixed internal credentials for talking to frpc (never changes)
+INTERNAL_USER = os.environ.get('ADMIN_USER', 'admin')
+INTERNAL_PASS = os.environ.get('ADMIN_PASS', '')
+
+# External credentials for API auth (can change via config)
+external_credentials = {
+    'user': INTERNAL_USER,
+    'pass': INTERNAL_PASS
 }
 
 def read_credentials_from_config():
-    """Read admin credentials from config file"""
+    """Read admin credentials from config file for external auth"""
     try:
         with open(CONFIG_FILE, 'r') as f:
             content = f.read()
@@ -39,13 +44,13 @@ def read_credentials_from_config():
         pass
     return None, None
 
-def update_credentials():
-    """Update credentials from config file"""
+def update_external_credentials():
+    """Update external credentials from config file"""
     user, passwd = read_credentials_from_config()
     if user and passwd:
-        credentials['user'] = user
-        credentials['pass'] = passwd
-        print(f"[PROXY] Credentials updated: user={user}")
+        external_credentials['user'] = user
+        external_credentials['pass'] = passwd
+        print(f"[PROXY] External credentials loaded: user={user}")
 
 class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
     
@@ -54,7 +59,7 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
         print(f"[PROXY] {args[0]}")
     
     def check_auth(self):
-        """Verify HTTP Basic Auth"""
+        """Verify HTTP Basic Auth against external credentials"""
         auth_header = self.headers.get('Authorization', '')
         if not auth_header.startswith('Basic '):
             return False
@@ -63,7 +68,7 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
             encoded = auth_header[6:]
             decoded = base64.b64decode(encoded).decode('utf-8')
             username, password = decoded.split(':', 1)
-            return username == credentials['user'] and password == credentials['pass']
+            return username == external_credentials['user'] and password == external_credentials['pass']
         except:
             return False
     
@@ -75,12 +80,14 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b'{"error":"unauthorized"}')
     
-    def forward_to_frpc(self, method='GET', body=None):
-        """Forward request to frpc admin API"""
-        url = f"{FRPC_ADMIN_URL}{self.path}"
+    def forward_to_frpc(self, method='GET', path=None, body=None):
+        """Forward request to frpc admin API with FIXED internal credentials"""
+        if path is None:
+            path = self.path
+        url = f"{FRPC_ADMIN_URL}{path}"
         
-        # Create request with current credentials
-        auth_str = f"{credentials['user']}:{credentials['pass']}"
+        # Always use FIXED internal credentials
+        auth_str = f"{INTERNAL_USER}:{INTERNAL_PASS}"
         auth_bytes = base64.b64encode(auth_str.encode()).decode()
         
         headers = {'Authorization': f'Basic {auth_bytes}'}
@@ -96,24 +103,12 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
     
     def save_config(self):
         """Save current config to file"""
-        # Need to get config from frpc's new path
-        url = f"{FRPC_ADMIN_URL}/api/config"
-        auth_str = f"{credentials['user']}:{credentials['pass']}"
-        auth_bytes = base64.b64encode(auth_str.encode()).decode()
-        headers = {'Authorization': f'Basic {auth_bytes}'}
-        
-        try:
-            req = Request(url, headers=headers)
-            with urlopen(req, timeout=10) as response:
-                config_data = response.read()
-            
-            if config_data and not config_data.startswith(b'{'):
-                with open(CONFIG_FILE, 'wb') as f:
-                    f.write(config_data)
-                print(f"[PROXY] Config saved to {CONFIG_FILE}")
-                return True
-        except Exception as e:
-            print(f"[PROXY] Save failed: {e}")
+        config_data = self.forward_to_frpc('GET', '/api/config')
+        if config_data and not config_data.startswith(b'{'):
+            with open(CONFIG_FILE, 'wb') as f:
+                f.write(config_data)
+            print(f"[PROXY] Config saved to {CONFIG_FILE}")
+            return True
         return False
     
     def do_GET(self):
@@ -149,48 +144,23 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
                     new_user = user_match.group(1)
                     new_pass = pass_match.group(1)
             
-            # Save old credentials for reload
-            old_user = credentials['user']
-            old_pass = credentials['pass']
+            # 1. Update config in frpc
+            self.forward_to_frpc('PUT', '/api/config', body)
             
-            # 1. Update config in frpc (using current/old credentials)
-            self.forward_to_frpc('PUT', body)
+            # 2. Reload frpc
+            self.forward_to_frpc('GET', '/api/reload')
+            print("[PROXY] Config updated and reload triggered")
             
-            # 2. Reload frpc with OLD credentials (frpc still has old config)
-            reload_url = f"{FRPC_ADMIN_URL}/api/reload"
-            auth_str = f"{old_user}:{old_pass}"
-            auth_bytes = base64.b64encode(auth_str.encode()).decode()
-            headers = {'Authorization': f'Basic {auth_bytes}'}
-            try:
-                req = Request(reload_url, headers=headers)
-                urlopen(req, timeout=5)
-                print("[PROXY] Reload triggered with old credentials")
-            except Exception as e:
-                print(f"[PROXY] Reload error: {e}")
+            # 3. Wait for reload
+            time.sleep(0.5)
             
-            # 3. Wait for frpc to apply new config
-            import time
-            time.sleep(1)
-            
-            # 4. NOW update local credentials AFTER reload
+            # 4. Update EXTERNAL credentials (for proxy auth)
             if new_user and new_pass:
-                credentials['user'] = new_user
-                credentials['pass'] = new_pass
-                print(f"[PROXY] Credentials updated to: user={new_user}")
+                external_credentials['user'] = new_user
+                external_credentials['pass'] = new_pass
+                print(f"[PROXY] External credentials updated: user={new_user}")
             
-            # 5. Verify reload worked by testing new credentials
-            verify_url = f"{FRPC_ADMIN_URL}/api/status"
-            auth_str = f"{credentials['user']}:{credentials['pass']}"
-            auth_bytes = base64.b64encode(auth_str.encode()).decode()
-            headers = {'Authorization': f'Basic {auth_bytes}'}
-            try:
-                req = Request(verify_url, headers=headers)
-                urlopen(req, timeout=5)
-                print("[PROXY] Reload verified - new credentials work")
-            except Exception as e:
-                print(f"[PROXY] Reload verify failed: {e} - may need restart")
-            
-            # 6. Save to file (using NEW credentials)
+            # 5. Save to file
             self.save_config()
             
             self.send_response(200)
@@ -198,7 +168,7 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b'{"status":"updated","saved":true}')
         else:
-            response = self.forward_to_frpc('PUT', body)
+            response = self.forward_to_frpc('PUT', self.path, body)
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.end_headers()
@@ -206,12 +176,14 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
 
 def run_server(port=7400):
     """Start HTTP server"""
-    # Read initial credentials from config if exists
-    update_credentials()
+    # Load external credentials from existing config
+    update_external_credentials()
+    
+    print(f"[PROXY] Config proxy server running on port {port}")
+    print(f"[PROXY] External auth user: {external_credentials['user']}")
+    print(f"[PROXY] Internal frpc user: {INTERNAL_USER} (fixed)")
     
     server = http.server.HTTPServer(('0.0.0.0', port), ConfigProxyHandler)
-    print(f"[PROXY] Config proxy server running on port {port}")
-    print(f"[PROXY] Auth user: {credentials['user']}")
     server.serve_forever()
 
 if __name__ == '__main__':
