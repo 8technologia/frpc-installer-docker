@@ -223,7 +223,7 @@ check_frpc_status() {
         return 1
     fi
     
-    local status=$(curl -s --max-time 5 -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7400/api/status" 2>/dev/null)
+    local status=$(curl -s --max-time 5 -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402/api/status" 2>/dev/null)
     if [ -z "$status" ]; then
         return 1
     fi
