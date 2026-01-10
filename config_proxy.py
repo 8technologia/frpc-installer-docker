@@ -149,27 +149,32 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
                     new_user = user_match.group(1)
                     new_pass = pass_match.group(1)
             
-            # 1. Update config in frpc
+            # Save old credentials for reload
+            old_user = credentials['user']
+            old_pass = credentials['pass']
+            
+            # 1. Update config in frpc (using current/old credentials)
             self.forward_to_frpc('PUT', body)
             
-            # 2. Update local credentials BEFORE reload if changed
-            if new_user and new_pass:
-                credentials['user'] = new_user
-                credentials['pass'] = new_pass
-                print(f"[PROXY] Credentials updated to: user={new_user}")
-            
-            # 3. Reload frpc with new credentials
+            # 2. Reload frpc with OLD credentials (frpc still has old config)
             reload_url = f"{FRPC_ADMIN_URL}/api/reload"
-            auth_str = f"{credentials['user']}:{credentials['pass']}"
+            auth_str = f"{old_user}:{old_pass}"
             auth_bytes = base64.b64encode(auth_str.encode()).decode()
             headers = {'Authorization': f'Basic {auth_bytes}'}
             try:
                 req = Request(reload_url, headers=headers)
                 urlopen(req, timeout=5)
-            except:
-                pass
+                print("[PROXY] Reload successful with old credentials")
+            except Exception as e:
+                print(f"[PROXY] Reload error: {e}")
             
-            # 4. Save to file
+            # 3. NOW update local credentials AFTER reload
+            if new_user and new_pass:
+                credentials['user'] = new_user
+                credentials['pass'] = new_pass
+                print(f"[PROXY] Credentials updated to: user={new_user}")
+            
+            # 4. Save to file (using NEW credentials)
             self.save_config()
             
             self.send_response(200)
