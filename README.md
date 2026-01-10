@@ -22,6 +22,9 @@ docker logs frpc
 ## Quick Start (Docker Run)
 
 ```bash
+git clone https://github.com/8technologia/frpc-installer-docker.git
+cd frpc-installer-docker
+
 # Build image
 docker build -t frpc-client .
 
