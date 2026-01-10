@@ -164,17 +164,33 @@ class ConfigProxyHandler(http.server.BaseHTTPRequestHandler):
             try:
                 req = Request(reload_url, headers=headers)
                 urlopen(req, timeout=5)
-                print("[PROXY] Reload successful with old credentials")
+                print("[PROXY] Reload triggered with old credentials")
             except Exception as e:
                 print(f"[PROXY] Reload error: {e}")
             
-            # 3. NOW update local credentials AFTER reload
+            # 3. Wait for frpc to apply new config
+            import time
+            time.sleep(1)
+            
+            # 4. NOW update local credentials AFTER reload
             if new_user and new_pass:
                 credentials['user'] = new_user
                 credentials['pass'] = new_pass
                 print(f"[PROXY] Credentials updated to: user={new_user}")
             
-            # 4. Save to file (using NEW credentials)
+            # 5. Verify reload worked by testing new credentials
+            verify_url = f"{FRPC_ADMIN_URL}/api/status"
+            auth_str = f"{credentials['user']}:{credentials['pass']}"
+            auth_bytes = base64.b64encode(auth_str.encode()).decode()
+            headers = {'Authorization': f'Basic {auth_bytes}'}
+            try:
+                req = Request(verify_url, headers=headers)
+                urlopen(req, timeout=5)
+                print("[PROXY] Reload verified - new credentials work")
+            except Exception as e:
+                print(f"[PROXY] Reload verify failed: {e} - may need restart")
+            
+            # 6. Save to file (using NEW credentials)
             self.save_config()
             
             self.send_response(200)
