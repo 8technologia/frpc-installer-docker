@@ -7,7 +7,7 @@ Docker container cho FRPC client với:
 - ✅ Webhook notifications
 - ✅ Persist config qua volume
 
-## Quick Start
+## Quick Start (Docker Compose)
 
 ```bash
 git clone https://github.com/8technologia/frpc-installer-docker.git
@@ -15,8 +15,52 @@ cd frpc-installer-docker
 cp .env.example .env
 # Edit .env với SERVER_ADDR, SERVER_PORT, AUTH_TOKEN
 
-docker-compose up -d
+docker compose up -d
 docker logs frpc
+```
+
+## Quick Start (Docker Run)
+
+```bash
+# Build image
+docker build -t frpc-client .
+
+# Run container
+docker run -d \
+  --name frpc \
+  --restart unless-stopped \
+  -e SERVER_ADDR=your-frp-server.com \
+  -e SERVER_PORT=7000 \
+  -e AUTH_TOKEN=your-secret-token \
+  -e WEBHOOK_URL=https://your-webhook.com/endpoint \
+  -v $(pwd)/config:/etc/frpc \
+  frpc-client
+
+# View logs
+docker logs frpc
+```
+
+### Tất cả environment variables
+
+```bash
+docker run -d \
+  --name frpc \
+  --restart unless-stopped \
+  -e SERVER_ADDR=your-frp-server.com \
+  -e SERVER_PORT=7000 \
+  -e AUTH_TOKEN=your-secret-token \
+  -e BOX_NAME=MyBox \
+  -e SOCKS5_PORT=51000 \
+  -e HTTP_PORT=52000 \
+  -e ADMIN_PORT=53000 \
+  -e PROXY_USER=myuser \
+  -e PROXY_PASS=mypassword \
+  -e ADMIN_USER=admin \
+  -e ADMIN_PASS=adminpass \
+  -e BANDWIDTH_LIMIT=10MB \
+  -e WEBHOOK_URL=https://webhook.example.com \
+  -v $(pwd)/config:/etc/frpc \
+  frpc-client
 ```
 
 ## Environment Variables
@@ -64,7 +108,7 @@ curl -X PUT -u "admin:PASSWORD" \
 
 ### Đổi admin password
 
-Config mới với password mới → áp dụng ngay:
+Config mới với password mới → áp dụng ngay, không cần restart:
 
 ```toml
 webServer.user = "newadmin"
@@ -82,7 +126,6 @@ Gửi khi container khởi động thành công:
   "event": "container_ready",
   "message": "FRPC proxies are running for box Box-Docker-xxx",
   "timestamp": "2026-01-10T02:00:00+00:00",
-  "hostname": "container_id",
   "box_name": "Box-Docker-xxx",
   "public_ip": "xxx.xxx.xxx.xxx",
   "server": "server:port",
@@ -118,36 +161,47 @@ Gửi khi có lỗi kết nối.
 
 ## Commands
 
-### Start
+### Docker Compose
 
 ```bash
-docker-compose up -d
-```
+# Start
+docker compose up -d
 
-### View logs
-
-```bash
+# Logs
 docker logs frpc
-docker logs -f frpc  # follow
-```
+docker logs -f frpc
 
-### Restart
-
-```bash
+# Restart
 docker restart frpc
-```
 
-### Stop
+# Stop
+docker compose down
 
-```bash
-docker-compose down
-```
+# Rebuild
+docker compose build --no-cache
+docker compose up -d
 
-### Reset config (regenerate credentials)
-
-```bash
+# Reset config
 rm -rf ./config/*
-docker-compose up -d
+docker compose up -d
+```
+
+### Docker Run
+
+```bash
+# Stop
+docker stop frpc
+
+# Start
+docker start frpc
+
+# Remove
+docker rm -f frpc
+
+# Rebuild
+docker build -t frpc-client .
+docker rm -f frpc
+docker run -d ... frpc-client
 ```
 
 ## Update
@@ -155,8 +209,8 @@ docker-compose up -d
 ```bash
 cd frpc-installer-docker
 git pull
-docker-compose build --no-cache
-docker-compose up -d
+docker compose build --no-cache
+docker compose up -d
 ```
 
 ## Architecture
@@ -181,21 +235,6 @@ docker-compose up -d
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Directory Structure
-
-```
-frpc-installer-docker/
-├── docker-compose.yml
-├── Dockerfile
-├── entrypoint.sh
-├── config_proxy.py      # Python HTTP proxy với auth
-├── .env.example
-├── .gitignore
-├── README.md
-└── config/              # Volume mount, DO NOT commit
-    └── frpc.toml
-```
-
 ## Troubleshooting
 
 ### Container không kết nối được
@@ -207,21 +246,13 @@ frpc-installer-docker/
 ### Admin API không hoạt động
 
 1. Đợi container ready (webhook `container_ready`)
-2. Verify credentials trong webhook
+2. Verify credentials trong webhook hoặc logs
 3. Test: `curl -u admin:PASS http://server:port/api/status`
 
 ### Config không persist
 
-1. Check volume mount: `./config:/etc/frpc`
+1. Check volume mount: `-v ./config:/etc/frpc`
 2. Check thư mục `config/` có file `frpc.toml`
-
-## Version History
-
-- **v1.0** - Initial Docker version
-- **v1.1** - Added webhook support
-- **v1.2** - Added Admin API with auto-save
-- **v1.3** - Python HTTP proxy for proper auth
-- **v1.4** - Separate HTTP/SOCKS5 passwords in webhook
 
 ## License
 
