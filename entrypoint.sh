@@ -260,7 +260,6 @@ fi
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7400..."
 (
     while true; do
-        # Simple HTTP server using netcat
         { 
             read -r REQUEST_LINE
             METHOD=$(echo "$REQUEST_LINE" | cut -d' ' -f1)
@@ -268,42 +267,52 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting config proxy on port 7400..."
             
             # Read headers
             CONTENT_LENGTH=0
+            AUTH_HEADER=""
             while read -r HEADER; do
                 HEADER=$(echo "$HEADER" | tr -d '\r')
                 [ -z "$HEADER" ] && break
-                if echo "$HEADER" | grep -qi "content-length"; then
+                if echo "$HEADER" | grep -qi "^content-length:"; then
                     CONTENT_LENGTH=$(echo "$HEADER" | cut -d':' -f2 | tr -d ' ')
+                fi
+                if echo "$HEADER" | grep -qi "^authorization:"; then
+                    AUTH_HEADER=$(echo "$HEADER" | cut -d' ' -f2-)
                 fi
             done
             
-            # Read body
-            BODY=""
-            if [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
-                BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
-            fi
-            
-            # Handle requests
-            if [ "$REQ_PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
-                # 1. Update config
-                curl -s -X PUT -u "$ADMIN_USER:$ADMIN_PASS" \
-                    -H "Content-Type: text/plain" \
-                    -d "$BODY" http://127.0.0.1:7402/api/config
-                
-                # 2. Reload
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/reload
-                
-                # 3. Save to file immediately
-                curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
-                
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
-                
-                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
+            # Verify auth - check against admin credentials
+            EXPECTED_AUTH="Basic $(echo -n "$ADMIN_USER:$ADMIN_PASS" | base64)"
+            if [ "$AUTH_HEADER" != "$EXPECTED_AUTH" ]; then
+                echo -e "HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"frpc\"\r\n\r\n{\"error\":\"unauthorized\"}"
             else
-                # Forward other requests to frpc
-                RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402$REQ_PATH")
-                echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n$RESP"
+                # Read body
+                BODY=""
+                if [ "$CONTENT_LENGTH" -gt 0 ] 2>/dev/null; then
+                    BODY=$(dd bs=1 count="$CONTENT_LENGTH" 2>/dev/null)
+                fi
+                
+                # Handle requests
+                if [ "$REQ_PATH" = "/api/config" ] && [ "$METHOD" = "PUT" ]; then
+                    # 1. Update config
+                    curl -s -X PUT -u "$ADMIN_USER:$ADMIN_PASS" \
+                        -H "Content-Type: text/plain" \
+                        -d "$BODY" http://127.0.0.1:7402/api/config >/dev/null
+                    
+                    # 2. Reload
+                    curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/reload >/dev/null
+                    
+                    # 3. Save to file immediately
+                    curl -s -u "$ADMIN_USER:$ADMIN_PASS" http://127.0.0.1:7402/api/config > "$CONFIG_FILE"
+                    
+                    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Config updated and saved to file"
+                    
+                    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"status\":\"updated\",\"saved\":true}"
+                else
+                    # Forward other requests to frpc
+                    RESP=$(curl -s -u "$ADMIN_USER:$ADMIN_PASS" "http://127.0.0.1:7402$REQ_PATH" 2>/dev/null)
+                    echo -e "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n$RESP"
+                fi
             fi
-        } | nc -l -p 7400 -q 1 2>/dev/null || sleep 1
+        } | nc -l -p 7400 -q 1 2>/dev/null || sleep 0.5
     done
 ) &
 
